@@ -76,6 +76,20 @@ st.markdown("""
         color: #f1f5f9 !important;
     }
 
+    /* Target download buttons and text inside them in sidebar dark mode */
+    [data-theme="dark"] .export-button {
+        color: #ffffff !important;
+    }
+    [data-theme="dark"] .export-button-secondary {
+        color: var(--primary-teal-light) !important;
+        border-color: var(--primary-teal-light) !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
+    }
+    [data-theme="dark"] .export-button-secondary:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        color: #ffffff !important;
+    }
+
     [data-theme="dark"] .stTabs [data-baseweb="tab"] {
         background-color: rgba(255, 255, 255, 0.05) !important;
         border-color: #334155 !important;
