@@ -4,3 +4,7 @@ scikit-learn
 numpy
 matplotlib
 seaborn
+plotly
+fpdf
+joblib
+scipy
