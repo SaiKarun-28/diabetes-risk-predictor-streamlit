@@ -76,18 +76,13 @@ st.markdown("""
         color: #f1f5f9 !important;
     }
 
-    /* Target download buttons and text inside them in sidebar dark mode */
-    [data-theme="dark"] .export-button {
-        color: #ffffff !important;
+    /* Enhanced contrast for expanders in dark mode */
+    [data-theme="dark"] [data-testid="stExpander"] summary p {
+        color: #f1f5f9 !important;
     }
-    [data-theme="dark"] .export-button-secondary {
+
+    [data-theme="dark"] [data-testid="stExpander"] summary:hover p {
         color: var(--primary-teal-light) !important;
-        border-color: var(--primary-teal-light) !important;
-        background-color: rgba(255, 255, 255, 0.05) !important;
-    }
-    [data-theme="dark"] .export-button-secondary:hover {
-        background-color: rgba(255, 255, 255, 0.1) !important;
-        color: #ffffff !important;
     }
 
     [data-theme="dark"] .stTabs [data-baseweb="tab"] {
@@ -211,39 +206,6 @@ st.markdown("""
         padding: 20px;
     }
 
-    /* Export button styling */
-    .export-button {
-        background-color: var(--primary-teal);
-        color: var(--neutral-white);
-        border: none;
-        border-radius: 8px;
-        padding: 12px 24px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-decoration: none;
-        display: inline-block;
-        margin: 8px;
-    }
-
-    .export-button:hover {
-        background-color: var(--primary-teal-dark);
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-md);
-        color: var(--neutral-white);
-    }
-
-    .export-button-secondary {
-        background-color: var(--neutral-white);
-        color: var(--primary-teal-dark);
-        border: 2px solid var(--primary-teal-dark);
-    }
-
-    .export-button-secondary:hover {
-        background-color: var(--neutral-gray-50);
-        color: var(--primary-teal-dark);
-    }
-
     /* Clinical Context box styling */
     .clinical-context-box {
         background-color: var(--neutral-gray-100);
@@ -260,22 +222,9 @@ st.markdown("""
         text-align: center;
     }
 
-    .stSuccess {
-        background-color: #f0fdf4;
-        border-color: var(--accent-green);
-        color: #166534;
-    }
-
-    .stError {
-        background-color: #fef2f2;
-        border-color: var(--accent-red);
-        color: #991b1b;
-    }
-
-    .stWarning {
-        background-color: #fffbeb;
-        border-color: var(--accent-amber);
-        color: #92400e;
+    /* Streamlit Alert contrast fix */
+    [data-testid="stAlert"] p {
+        color: inherit !important;
     }
 
     /* Typography */
@@ -321,8 +270,31 @@ def train_model():
     model.fit(X, y)
     return model, X.columns
 
+@st.cache_resource
+def get_bootstrap_models(n_iterations=200):
+    """Generate bootstrap models for confidence interval estimation."""
+    # ponytail: bootstrapping 200 models on 15k rows is fast enough for cached resource
+    data = pd.read_csv("health_diagnosis_dataset.csv")
+    X = data.drop(columns="Diagnosis")
+    y = data["Diagnosis"]
+    bootstrap_models = []
+
+    for i in range(n_iterations):
+        # resample with fixed seed for consistent CI across runs
+        X_resampled = X.sample(frac=1.0, replace=True, random_state=i)
+        y_resampled = y.loc[X_resampled.index]
+
+        pipe = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=2000))
+        ])
+        pipe.fit(X_resampled, y_resampled)
+        bootstrap_models.append(pipe)
+    return bootstrap_models
+
 # Load model once
 model, feature_names = train_model()
+bootstrap_models = get_bootstrap_models()
 
 # Helper function to classify risk tiers
 def classify_risk_tier(probability):
@@ -407,30 +379,37 @@ def sidebar_export(patient_data, risk_prob, risk_tier, top_features):
         patient_data, risk_prob, risk_tier, top_features
     )
 
-    # Download buttons
+    # Download buttons in columns
     col1, col2 = st.sidebar.columns(2)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     with col1:
-        # Text report download
-        b64_text = base64.b64encode(text_report.encode()).decode()
-        href_text = f"<a href='data:text/plain;base64,{b64_text}' download='diabetes_risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt' class='export-button'>📝 TXT Report</a>"
-        st.sidebar.markdown(href_text, unsafe_allow_html=True)
+        st.download_button(
+            label="📝 TXT Report",
+            data=text_report.encode(),
+            file_name=f'diabetes_risk_assessment_{timestamp}.txt',
+            mime='text/plain',
+            use_container_width=True
+        )
 
     with col2:
-        # CSV report download
-        csv = csv_df.to_csv(index=False)
-        b64_csv = base64.b64encode(csv.encode()).decode()
-        href_csv = f"<a href='data:text/csv;base64,{b64_csv}' download='diabetes_risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv' class='export-button export-button-secondary'>📊 CSV Report</a>"
-        st.sidebar.markdown(href_csv, unsafe_allow_html=True)
+        st.download_button(
+            label="📊 CSV Report",
+            data=csv_df.to_csv(index=False),
+            file_name=f'diabetes_risk_assessment_{timestamp}.csv',
+            mime='text/csv',
+            use_container_width=True
+        )
 
     # Display report preview
     st.sidebar.markdown("## 📋 Report Preview")
 
     with st.sidebar.expander("Text Report Preview"):
-        st.text_area("Text Report", text_report[:1000] + "..." if len(text_report) > 1000 else text_report, height=200)
+        # ponytail: full report visible now as requested
+        st.text_area("Text Report", text_report, height=250)
 
     with st.sidebar.expander("CSV Data Preview"):
-        st.dataframe(csv_df.head(), width='stretch')
+        st.dataframe(csv_df.head(), use_container_width=True)
 
 # Main application
 st.title("🩺 Type 2 Diabetes Risk Predictor")
@@ -557,25 +536,31 @@ with col2:
     """, unsafe_allow_html=True)
 
     # Determine if prediction is positive or negative
+    risk_status = "Positive" if pred == 1 else "Negative"
+    risk_desc = "above" if pred == 1 else "below"
+
+    # Enhanced prediction card text
+    message = f"Estimated risk: **{prob*100:.1f}%**\n\nClassified as **{risk_status.lower()}** because the estimated risk is {risk_desc} 50%."
+
     if pred == 1:
-        st.error("⚠️ **Prediction: Positive** for diabetes risk")
+        st.error(f"⚠️ {message}")
         st.write("Consider clinical follow-up and further diagnostic testing.")
     else:
-        st.success("✅ **Prediction: Negative** for diabetes risk")
+        st.success(f"✅ {message}")
         st.write("Maintain healthy lifestyle habits and routine screening.")
 
-    # Probability gauge with confidence interval
-    import math
-    se = math.sqrt(prob * (1 - prob) / len(input_data))
-    ci_lower = max(0, prob - 1.96 * se)
-    ci_upper = min(1, prob + 1.96 * se)
+    # Confidence interval calculation via bootstrap
+    # ponytail: using 2.5th and 97.5th percentiles from 200 bootstrap iterations
+    bootstrap_probs = [m.predict_proba(input_data)[0][1] for m in bootstrap_models]
+    ci_lower = np.percentile(bootstrap_probs, 2.5)
+    ci_upper = np.percentile(bootstrap_probs, 97.5)
 
     st.markdown(f"""
     <div class="ci-box">
-        <p style="margin-bottom: 8px; font-size: 0.9rem;">95% Confidence Interval</p>
+        <p style="margin-bottom: 8px; font-size: 0.9rem;">95% Confidence Interval (Bootstrap)</p>
         <p style="font-size: 1.2rem; font-weight: 600;">
-            <span style="color: var(--primary-teal);">{ci_lower*100:.1f}%</span> -
-            <span style="color: #6366f1;">{ci_upper*100:.1f}%</span>
+            <span style="color: var(--primary-teal);">{max(0, ci_lower)*100:.1f}%</span> -
+            <span style="color: #6366f1;">{min(1, ci_upper)*100:.1f}%</span>
         </p>
     </div>
     """, unsafe_allow_html=True)
